@@ -3,6 +3,7 @@ package com.imooc.service.impl;
 import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
 import com.immoc.enums.CommentLevel;
+import com.immoc.enums.YesOrNo;
 import com.immoc.utils.DesensitizationUtil;
 import com.immoc.utils.PagedGridResult;
 import com.imooc.mapper.*;
@@ -172,6 +173,46 @@ public class ItemServiceImpl implements ItemService {
         Collections.addAll(specIdsList,ids);
 
         return itemsMapperCustom.queryItemsBySpecIds(specIdsList);
+    }
+
+    @Transactional(propagation = Propagation.SUPPORTS)
+    @Override
+    public ItemsSpec queryItemSpecById(String specId) {
+        return itemsSpecMapper.selectByPrimaryKey(specId);
+    }
+
+    @Transactional(propagation = Propagation.SUPPORTS)
+    @Override
+    public String queryItemsImgById(String itemsId) {
+
+        ItemsImg itemsImg = new ItemsImg();
+        itemsImg.setItemId(itemsId);
+        itemsImg.setIsMain(YesOrNo.YES.type);
+
+        ItemsImg result = itemsImgMapper.selectOne(itemsImg);
+
+        return result != null ? result.getUrl(): "";
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED)
+    @Override
+    public void decreaseItemSpecStock(String specId, int butCounts) {
+
+        /*
+            对于公共资源的解决方案
+            1、分布式锁zookeeper、redis
+            2、在特定代码处加解锁
+            3、数据库sql的乐观锁
+         */
+
+        //1、查询库存
+
+        //2、判断库存，是否能减少到0以下
+        int result = itemsMapperCustom.decreaseItemSpecStock(specId, butCounts);
+        if(result != 1 ){
+            throw new RuntimeException("订单创建失败，原因: 库存不足");
+        }
+
     }
 
     private PagedGridResult setterPageGrid(List<?> list, Integer page){
