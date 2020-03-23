@@ -12,6 +12,8 @@ import com.imooc.mapper.UsersMapper;
 import com.imooc.pojo.*;
 import com.imooc.pojo.bo.SubmitOrderBO;
 import com.imooc.pojo.bo.UserBO;
+import com.imooc.pojo.vo.MerchantOrdersVO;
+import com.imooc.pojo.vo.OrderVO;
 import com.imooc.service.AddressService;
 import com.imooc.service.ItemService;
 import com.imooc.service.OrdersService;
@@ -24,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tk.mybatis.mapper.entity.Example;
 
 import java.util.Date;
+import java.util.List;
 
 @Service
 public class OrdersServiceImpl implements OrdersService {
@@ -48,7 +51,7 @@ public class OrdersServiceImpl implements OrdersService {
 
     @Transactional(propagation = Propagation.REQUIRED)
     @Override
-    public String createOrder(SubmitOrderBO submitOrderBO) {
+    public OrderVO createOrder(SubmitOrderBO submitOrderBO) {
 
         String userId = submitOrderBO.getUserId();
         String addressId = submitOrderBO.getAddressId();
@@ -129,6 +132,69 @@ public class OrdersServiceImpl implements OrdersService {
         waitPayorderStatus.setCreatedTime(new Date());
         orderStatusMapper.insert(waitPayorderStatus);
 
-        return orderId;
+
+        //4、构建商户订单，用于传给支付中心
+        MerchantOrdersVO merchantOrdersVO = new MerchantOrdersVO();
+        merchantOrdersVO.setMerchantOrderId(orderId);
+        merchantOrdersVO.setMerchantUserId(userId);
+        merchantOrdersVO.setAmount(realPayAmount + postAmount);
+        merchantOrdersVO.setPayMethod(payMethod);
+
+        //构建自定义Id
+        OrderVO orderVO = new OrderVO(orderId,merchantOrdersVO);
+
+        return orderVO;
     }
+
+    @Transactional(propagation = Propagation.REQUIRED)
+    @Override
+    public void updateOrderStatus(String orderId, Integer orderStatus) {
+
+        OrderStatus paidStatus = new OrderStatus();
+        paidStatus.setOrderId(orderId);
+        paidStatus.setOrderStatus(orderStatus);
+        paidStatus.setPayTime(new Date());
+
+        orderStatusMapper.updateByPrimaryKeySelective(paidStatus);
+    }
+
+    @Transactional(propagation = Propagation.SUPPORTS)
+    @Override
+    public OrderStatus queryOrderStatusInfo(String orderId) {
+        return orderStatusMapper.selectByPrimaryKey(orderId);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED)
+    @Override
+    public void closeOrder() {
+
+        //查询所有未付款订单，判断时间是否超时(1天),超时则关闭交易
+        OrderStatus orderStatus = new OrderStatus();
+        orderStatus.setOrderStatus(OrderStatusEnum.WAIT_PAY.type);
+
+        List<OrderStatus> list = orderStatusMapper.select(orderStatus);
+
+        for (OrderStatus os : list) {
+            //获得订单创建时间
+            Date createdTime = os.getCreatedTime();
+            //和当前时间做对比
+            int days = DateUtil.daysBetween(createdTime, new Date());
+              if(days > 1){
+                //超过一天，关闭订单
+                 doCloseOrder(os.getOrderId());
+            }
+        }
+
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED)
+    void doCloseOrder(String orderId){
+        OrderStatus orderStatus = new OrderStatus();
+         orderStatus.setOrderId(orderId);
+        orderStatus.setOrderStatus(OrderStatusEnum.CLOSE.type);
+        orderStatus.setCloseTime(new Date());
+        //执行订单关闭更新
+          orderStatusMapper.updateByPrimaryKeySelective(orderStatus);
+    }
+
 }

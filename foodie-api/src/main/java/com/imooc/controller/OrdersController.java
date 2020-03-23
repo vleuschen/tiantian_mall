@@ -1,26 +1,27 @@
 package com.imooc.controller;
 
+import com.immoc.enums.OrderStatusEnum;
 import com.immoc.enums.PayMethod;
-import com.immoc.utils.CookieUtils;
 import com.immoc.utils.JSONResult;
-import com.immoc.utils.MobileEmailUtils;
-import com.imooc.pojo.UserAddress;
-import com.imooc.pojo.bo.AddressBO;
+import com.imooc.pojo.OrderStatus;
 import com.imooc.pojo.bo.SubmitOrderBO;
-import com.imooc.service.AddressService;
+import com.imooc.pojo.vo.MerchantOrdersVO;
+import com.imooc.pojo.vo.OrderVO;
 import com.imooc.service.OrdersService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
-import io.swagger.annotations.ApiParam;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestTemplate;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import java.util.List;
 
 @Api(value = "订单相关",tags = {"订单相关的api"})
 @RestController
@@ -31,6 +32,9 @@ public class OrdersController extends BaseController {
 
     @Autowired
     private OrdersService ordersService;
+
+    @Autowired
+    private RestTemplate restTemplate;
 
     @ApiOperation(value = "用户下蛋",notes = "用户下蛋",httpMethod = "POST")
     @PostMapping("/create")
@@ -45,7 +49,12 @@ public class OrdersController extends BaseController {
         }
 
         // 1、创建订单
-        String orderId = ordersService.createOrder(submitOrderBO);
+        OrderVO orderVO = ordersService.createOrder(submitOrderBO);
+
+        String orderId = orderVO.getOrderId();
+
+        MerchantOrdersVO merchantOrdersVO = orderVO.getMerchantOrdersVO();
+        merchantOrdersVO.setReturnUrl(payReturnUrl);
 
         // 2、创建订单完成之后，移除购物车中已经结算的商品
         /**
@@ -59,11 +68,39 @@ public class OrdersController extends BaseController {
 
         // 3、向支付中心发送当前订单，用于保存支付中心的订单数据
 
+        //为了方便测试购买，所有的支付金额都统一改为一分钱
+        merchantOrdersVO.setAmount(1);;
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.add("imoocUserId", "xxx");
+        headers.add("password", "xxx");
+
+        HttpEntity<MerchantOrdersVO> httpEntity =
+                new HttpEntity<MerchantOrdersVO>(merchantOrdersVO,headers);
+
+        ResponseEntity<JSONResult> responseEntity = restTemplate.postForEntity(paymentUrl, httpEntity, JSONResult.class);
+
+        JSONResult paymentResult = responseEntity.getBody();
+        if(paymentResult.getStatus() != 200){
+            return JSONResult.errorMap("支付中心订单创建失败，请联系管理员");
+        }
+
         return JSONResult.ok(orderId);
     }
 
+    @PostMapping("/notifyMerchantOrderPaid")
+    public Integer notifyMerchantOrderPaid(String merchantOrderId){
+        ordersService.updateOrderStatus(merchantOrderId, OrderStatusEnum.WAIT_DELEVER.type);
+        return HttpStatus.OK.value();
+    }
 
+    @PostMapping("/getPaidOrderInfo")
+    public JSONResult getPaidOrderInfo(String orderId){
 
+        OrderStatus orderStatus = ordersService.queryOrderStatusInfo(orderId);
+
+        return JSONResult.ok(orderStatus);
+    }
 
 
 

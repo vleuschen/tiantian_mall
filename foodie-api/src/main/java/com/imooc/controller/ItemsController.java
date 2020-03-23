@@ -1,12 +1,9 @@
 package com.imooc.controller;
 
-import com.immoc.enums.YesOrNo;
 import com.immoc.utils.JSONResult;
 import com.immoc.utils.PagedGridResult;
 import com.imooc.pojo.*;
 import com.imooc.pojo.vo.*;
-import com.imooc.service.CarouselService;
-import com.imooc.service.CategoryService;
 import com.imooc.service.ItemService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -24,8 +21,6 @@ public class ItemsController extends BaseController {
 
     @Autowired
     private ItemService itemService;
-
-
 
     @ApiOperation(value = "查询商品详情",notes = "查询商品详情",httpMethod = "GET")
     @GetMapping("/info/{itemId}")
@@ -83,7 +78,7 @@ public class ItemsController extends BaseController {
         }
 
         if(pageSize == null){
-            pageSize = COMMENT_PAGE_SIZE;
+            pageSize = COMMON_PAGE_SIZE;
         }
 
         PagedGridResult grid = itemService.queryPageComments(itemId,
